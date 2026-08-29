@@ -48,7 +48,7 @@ Cookie、设备票据、`__NS_hxfalcon`、`__NS_sig3`/`sig4` 和上传 ID 都由
 |------|------|------|
 | **统一认证** | 用户 CK 初始化 | ✅ |
 | | 程序内二维码登录、www/CP 会话初始化 | ✅ |
-| | Live 专属会话刷新 | ⚠️ 需在监听前单独完成 |
+| | Live 专属会话刷新 | ✅ 监听前自动补齐 |
 | | 会话导出、恢复和短期 webweapon Cookie 续期 | ✅ |
 | **www 数据** | 作品详情、短视频详情（已知作品链接或 photoId） | ✅ |
 | | 推荐流自动发现 | ⚠️ 当前线上 feed/hot 可能返回 400，需按版本重新取证 |
@@ -209,10 +209,11 @@ client.run()                 # 一直监听；也可传 duration=300
 `result=2`，表示账号或 IP 处于直播风控状态，需要先在官方页面完成验证；这不是
 客户端可以通过伪造字段解决的普通签名错误。
 
-二维码登录自动补齐 www/CP 会话，但当前 Live 首页使用独立的站点票据。监听前若
-会话中还没有 `kuaishou.live.web_st` / `kuaishou.live.web_ph`，先调用
-`KuaishouLoginAPI.refresh_site_session(auth, SID_LIVE, KuaishouLiveAPI.live_url)`
-完成 Live 会话刷新；也可以直接提供包含 Live 票据的完整 CK。
+二维码登录自动补齐 www/CP 会话，但当前 Live 首页使用独立的站点票据。
+`LiveDanmakuClient.prepare()` 会在监听前自动检查并刷新
+`kuaishou.live.web_st` / `kuaishou.live.web_ph`；也可以直接提供包含 Live 票据的完整 CK。
+如果业务代码需要提前显式刷新，仍可调用
+`KuaishouLoginAPI.refresh_site_session(auth, SID_LIVE, KuaishouLiveAPI.live_url)`。
 
 ### 纯代码上传并发布
 
