@@ -115,6 +115,25 @@ _LIVE_ID_COOKIE_KEYS = {
     ),
 }
 
+# A live page opened directly does not necessarily carry CP creator cookies.
+# Chrome's passToken/getCdns requests then use this shorter cookie line.
+_LIVE_ONLY_ID_COOKIE_KEYS = {
+    "live_pass_token_home": (
+        "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+        "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+    ),
+    "live_pass_token_room": (
+        "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+        "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+    ),
+    "live_pass_token_profile": (
+        "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+        "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+    ),
+}
+for _name, _keys in tuple(_LIVE_ONLY_ID_COOKIE_KEYS.items()):
+    _LIVE_ONLY_ID_COOKIE_KEYS[_name + "_direct"] = _keys
+
 _CURRENT_LIVE_PROFILE_PATH = "/profile/3xxtfm5hgbcdd2c"
 
 
@@ -139,7 +158,9 @@ def _live_referer(site: str, referer: str = None) -> tuple[str, str]:
 def _validate_live_id_cookie(raw_cookie: str, profile: str) -> None:
     cookie_keys = tuple(
         part.split("=", 1)[0] for part in raw_cookie.split("; ") if part)
-    expected = _LIVE_ID_COOKIE_KEYS[profile]
+    direct = profile.startswith("live_pass_token_") \
+        and "kuaishou.web.cp.api_st" not in cookie_keys
+    expected = (_LIVE_ONLY_ID_COOKIE_KEYS if direct else _LIVE_ID_COOKIE_KEYS)[profile]
     if cookie_keys != expected:
         raise RuntimeError(
             f"{profile} Cookie profile 不完整或顺序错误，拒绝出网: "
@@ -154,10 +175,19 @@ def _validate_live_id_cookie(raw_cookie: str, profile: str) -> None:
             or len(set(cookie_values.get("userId", []))) != 1
             or len(cookie_values.get("userId", [])) != 2
             or len(set(cookie_values.get("bUserId", []))) != 1
-            or len(cookie_values.get("bUserId", [])) != 2):
+            or len(cookie_values.get("bUserId", [])) != (1 if direct else 2)):
         raise RuntimeError(
             f"{profile} 固定 product/重复身份字段与当前 Chrome Network "
             f"不一致，拒绝出网: {cookie_values}")
+
+
+def _live_id_profile(auth, profile: str) -> str:
+    """Select the shorter direct-live Cookie contract when CP is absent."""
+    cookie = getattr(auth, "_cookie", {}) or {}
+    if profile.startswith("live_pass_token_") and not cookie.get(
+            "kuaishou.web.cp.api_st"):
+        return profile + "_direct"
+    return profile
 
 
 def _qr_page_origin(sid: str = "", channel_type: str = "") -> str:
@@ -538,6 +568,7 @@ class KuaishouLoginAPI:
         if not str(getattr(auth, "did", "") or ""):
             raise RuntimeError("getCdns 必须发送程序设备 did，缺失时拒绝出网")
         page_referer, profile = _live_referer(site, referer)
+        profile = _live_id_profile(auth, profile)
         begin_transaction = getattr(auth, "begin_live_page_transaction", None)
         if not callable(begin_transaction):
             raise RuntimeError("getCdns 需要 live 页面 Sentry transaction 状态机")
@@ -599,6 +630,7 @@ class KuaishouLoginAPI:
                 f"成功合同，拒绝出网: sid={sid!r}, site={site!r}, "
                 f"channelType={channel_type!r}")
         page_referer, profile = _live_referer(site, referer)
+        profile = _live_id_profile(auth, profile)
         if with_cdn_preflight:
             KuaishouLoginAPI.get_cdns(
                 auth, sid=sid, site=site, referer=page_referer)

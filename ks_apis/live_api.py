@@ -70,6 +70,42 @@ _LIVE_COOKIE_KEY_CONTRACTS = {
         "kuaishou.live.bfb1s", "userId", "kuaishou.live.web_st",
         "kwpsecproductname", "kwssectoken", "kwscode", "kwfv1",
     ),
+    # Current Chrome 151 direct live-home requests (no CP STS cookies).
+    "live_home_current_initial": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+        "kwssectoken", "kwscode", "kwfv1",
+    ),
+    "live_home_current_login": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+        "kwssectoken", "kwscode", "kwfv1",
+    ),
+    "live_home_current_login_bootstrap": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kuaishou.live.web_st", "kwssectoken", "kwscode", "kwfv1",
+    ),
+    "live_home_current_authenticated_1": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwssectoken", "kwscode", "kwfv1",
+        "kuaishou.live.web_st", "kuaishou.live.web_ph",
+    ),
+    "live_home_current_authenticated_2": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwfv1", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+        "kwssectoken", "kwscode",
+    ),
+    "live_home_current_authenticated_3": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+        "kwssectoken", "kwscode", "kwfv1",
+    ),
     "live_home_authenticated_1": (
         "did", "wid", "clientid", "did", "client_key", "kpn", "didv", "userId",
         "bUserId", "kuaishou.web.cp.api_st", "kuaishou.web.cp.api_ph",
@@ -116,6 +152,37 @@ _LIVE_COOKIE_KEY_CONTRACTS = {
         "kuaishou.live.bfb1s", "userId", "kwpsecproductname",
         "kuaishou.live.web_st", "kuaishou.live.web_ph", "kwssectoken",
         "kwscode", "kwfv1",
+    ),
+    # Current Chrome 151 live-only room requests (2026-08-30). A direct
+    # live-page session can legitimately have no CP STS cookies.
+    "live_room_current_initial": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwfv1", "kwssectoken", "kwscode", "kuaishou.live.web_st",
+        "kuaishou.live.web_ph",
+    ),
+    "live_room_current_login": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwssectoken", "kwscode", "kuaishou.live.web_st",
+        "kuaishou.live.web_ph", "kwfv1",
+    ),
+    "live_room_current_login_bootstrap": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwssectoken", "kwscode", "kuaishou.live.web_st", "kwfv1",
+    ),
+    "live_room_login_bootstrap": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv", "userId",
+        "bUserId", "kuaishou.web.cp.api_st", "kuaishou.web.cp.api_ph",
+        "kuaishou.live.bfb1s", "userId", "kwpsecproductname",
+        "kuaishou.live.web_st", "kwssectoken", "kwscode", "kwfv1",
+    ),
+    "live_room_current_authenticated": (
+        "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+        "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+        "userId", "kwfv1", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+        "kwssectoken", "kwscode",
     ),
     "live_room_logout_authenticated": (
         "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
@@ -378,11 +445,45 @@ def _live_context(referer: str) -> str:
         f"缺少当前首页/房间/profile 完整 Referer，拒绝出网: {referer}")
 
 
+def _live_only_session(auth) -> bool:
+    """Whether the auth jar is the direct live-page session shape.
+
+    Chrome can open a live room without first visiting the creator/www pages;
+    that session has no CP STS cookies. Keep the historical CP-backed
+    contracts for the QR flow, while selecting the current live-only contracts
+    for this equally valid browser state.
+    """
+    cookie = getattr(auth, "_cookie", {}) or {}
+    return not (cookie.get("kuaishou.web.cp.api_st")
+                or cookie.get("kuaishou.web.cp.api_ph"))
+
+
+def _room_cookie_profile(auth, phase: str) -> str:
+    phase = str(phase or "initial")
+    if _live_only_session(auth) and phase in {"initial", "login", "authenticated"}:
+        return f"live_room_current_{phase}"
+    return f"live_room_{phase}"
+
+
+def _home_cookie_profile(auth, phase: str) -> str:
+    phase = str(phase or "initial")
+    if _live_only_session(auth) and phase in {
+            "initial", "login", "login_bootstrap", "authenticated_1",
+            "authenticated_2", "authenticated_3"}:
+        return f"live_home_current_{phase}"
+    return f"live_home_{phase}"
+
+
 def _current_live_profile(auth, referer: str) -> str:
     context = _live_context(referer)
     phases = getattr(auth, "_live_cookie_phase", {}) or {}
     phase = str(phases.get(context) or "initial")
-    profile = f"live_{context}_{phase}"
+    if context == "room":
+        profile = _room_cookie_profile(auth, phase)
+    elif context == "home":
+        profile = _home_cookie_profile(auth, phase)
+    else:
+        profile = f"live_{context}_{phase}"
     if profile not in _LIVE_COOKIE_KEY_CONTRACTS:
         raise RuntimeError(
             f"live {context} Cookie phase={phase!r} 没有当前 Chrome 合同，拒绝出网")
@@ -408,19 +509,26 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
         if api == "/live_api/baseuser/userinfo":
             ok = (method == "POST" and body == {} and not q and sentry
                   and cookie_profile in {"live_home_initial",
-                                         "live_home_authenticated_2"})
+                                         "live_home_authenticated_2",
+                                         "live_home_current_initial",
+                                         "live_home_current_authenticated_1",
+                                         "live_home_current_authenticated_2",
+                                         "live_home_current_authenticated_3"})
         elif api == "/live_api/category/classify":
             ok = (method == "GET"
                   and _exact_keys(q) == ("type", "source", "page", "pageSize")
                   and list(q.values()) == [4, 2, 1, 20] and body is None and sentry
-                  and cookie_profile == "live_home_initial")
+                  and cookie_profile in {"live_home_initial",
+                                         "live_home_current_initial"})
         elif api in {"/live_api/home/list", "/live_api/category/simple",
                      "/live_api/interestMask/list"}:
             ok = (method == "GET" and not q and body is None and sentry
-                  and cookie_profile == "live_home_initial")
+                  and cookie_profile in {"live_home_initial",
+                                         "live_home_current_initial"})
         elif api == "/live_api/baseuser/userFollowCount":
             initial = (method == "GET" and not q and body is None and sentry
-                       and cookie_profile == "live_home_initial")
+                       and cookie_profile in {"live_home_initial",
+                                              "live_home_current_initial"})
             delayed = (method == "GET" and not q and body is None and not sentry
                        and cookie_profile == "live_home_delayed")
             ok = initial or delayed
@@ -428,7 +536,11 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
             ok = (method == "GET" and not q and body is None and sentry
                   and cookie_profile in {"live_home_initial",
                                          "live_home_authenticated_1",
-                                         "live_home_authenticated_2"})
+                                         "live_home_authenticated_2",
+                                         "live_home_current_initial",
+                                         "live_home_current_authenticated_1",
+                                         "live_home_current_authenticated_2",
+                                         "live_home_current_authenticated_3"})
         elif api == "/live_api/baseuser/userLogin":
             info = (body or {}).get("userLoginInfo") if isinstance(body, dict) else None
             ok = (method == "POST" and not q
@@ -437,10 +549,14 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
                   and bool((info or {}).get("authToken"))
                   and (info or {}).get("sid") == "kuaishou.live.web"
                   and sentry and cookie_profile in {
-                      "live_home_login", "live_home_login_bootstrap"})
+                      "live_home_login", "live_home_login_bootstrap",
+                      "live_home_current_login",
+                      "live_home_current_login_bootstrap"})
         elif api == "/live_api/home/category":
             ok = (method == "GET" and not q and body is None and sentry
-                  and cookie_profile == "live_home_authenticated_2")
+                  and cookie_profile in {"live_home_authenticated_2",
+                                         "live_home_current_authenticated_2",
+                                         "live_home_current_authenticated_3"})
         else:
             ok = False
         if not ok:
@@ -509,7 +625,9 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
 
     if api == "/live_api/baseuser/userinfo":
         ok = (method == "POST" and body == {} and not q and sentry
-              and cookie_profile in {"live_room_initial", "live_room_authenticated"})
+              and cookie_profile in {"live_room_initial", "live_room_authenticated",
+                                     "live_room_current_initial",
+                                     "live_room_current_authenticated"})
     elif api == "/live_api/category/classify":
         ok = (method == "GET" and _exact_keys(q) == ("type", "source", "page", "pageSize")
               and list(q.values()) == [4, 2, 1, 20] and body is None and sentry
@@ -517,14 +635,19 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
     elif api == "/live_api/web/pay/get-pay":
         ok = (method == "GET" and not q and body is None and sentry
               and cookie_profile in {"live_room_initial", "live_room_login",
-                                     "live_room_authenticated"})
+                                     "live_room_authenticated", "live_room_current_initial",
+                                     "live_room_current_login",
+                                     "live_room_current_login_bootstrap",
+                                     "live_room_login_bootstrap",
+                                     "live_room_current_authenticated"})
     elif api in {"/live_api/baseuser/userFollowCount", "/live_api/category/simple",
                  "/live_api/interestMask/list"}:
         initial = (method == "GET" and not q and body is None and sentry
-                   and cookie_profile == "live_room_initial")
+                   and cookie_profile in {"live_room_initial", "live_room_current_initial"})
         delayed = (api == "/live_api/baseuser/userFollowCount"
                    and method == "GET" and not q and body is None and not sentry
-                   and cookie_profile == "live_room_authenticated")
+                   and cookie_profile in {"live_room_authenticated",
+                                          "live_room_current_authenticated"})
         ok = initial or delayed
     elif api in {"/live_api/emoji/icon", "/live_api/emoji/allgifts"}:
         ok = (method == "GET" and not q and body is None and sentry
@@ -532,23 +655,25 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
     elif api == "/live_api/emoji/gift-list":
         initial = (method == "GET" and _exact_keys(q) == ("liveStreamId",)
                    and bool(q.get("liveStreamId")) and body is None and sentry
-                   and cookie_profile == "live_room_initial")
+                   and cookie_profile in {"live_room_initial", "live_room_current_initial"})
         expanded = (method == "GET" and _exact_keys(q) == ("liveStreamId", "sortType")
                     and bool(q.get("liveStreamId")) and q.get("sortType") == 0
                     and body is None and not sentry
-                    and cookie_profile == "live_room_authenticated")
+                    and cookie_profile in {"live_room_authenticated",
+                                           "live_room_current_authenticated"})
         ok = initial or expanded
     elif api == "/live_api/liveroom/reco":
         ok = (method == "POST" and not q and body == _LIVE_RECO_BODY
               and _exact_keys(body) == ("followingParam", "gameFavour") and sentry
-              and cookie_profile == "live_room_initial")
+              and cookie_profile in {"live_room_initial", "live_room_current_initial"})
     elif api == "/live_api/baseuser/userLogin":
         info = (body or {}).get("userLoginInfo") if isinstance(body, dict) else None
         ok = (method == "POST" and not q and _exact_keys(body) == ("userLoginInfo",)
               and _exact_keys(info) == ("authToken", "sid")
               and bool((info or {}).get("authToken"))
               and (info or {}).get("sid") == "kuaishou.live.web" and sentry
-              and cookie_profile == "live_room_login")
+              and cookie_profile in {"live_room_login", "live_room_current_login",
+                                     "live_room_current_login_bootstrap"})
     elif api == _LIVE_USER_LOGOUT_PATH:
         ok = (method == "POST" and not q and body is None and sentry
               and cookie_profile in {"live_room_logout_authenticated",
@@ -559,14 +684,17 @@ def _assert_live_contract(auth, method: str, api: str, query: dict | None,
               and _exact_keys(body) == ("liveStreamId", "feedTypeCursorMap")
               and bool((body or {}).get("liveStreamId"))
               and _exact_keys(cursors) == ("1", "2") and list((cursors or {}).values()) == [0, 0]
-              and sentry and cookie_profile == "live_room_authenticated")
+              and sentry and cookie_profile in {"live_room_authenticated",
+                                                "live_room_current_authenticated"})
     elif api == "/live_api/liveroom/websocketinfo":
         ok = (method == "GET" and _exact_keys(q) == ("liveStreamId",)
               and bool(q.get("liveStreamId")) and body is None and sentry
-              and cookie_profile == "live_room_authenticated")
+              and cookie_profile in {"live_room_authenticated",
+                                     "live_room_current_authenticated"})
     else:  # /live_api/emoji/panel
         ok = (method == "GET" and not q and body is None and not sentry
-              and cookie_profile == "live_room_authenticated")
+              and cookie_profile in {"live_room_authenticated",
+                                     "live_room_current_authenticated"})
 
     if not ok:
         raise ValueError(
@@ -1042,7 +1170,8 @@ class KuaishouLiveAPI:
         """
         return KuaishouLiveAPI._get(auth, "/live_api/liveroom/websocketinfo",
                                     {"liveStreamId": live_stream_id}, eid=eid,
-                                    cookie_profile="live_room_authenticated")
+                                    cookie_profile=_room_cookie_profile(
+                                        auth, "authenticated"))
 
     @staticmethod
     def user_login(auth, auth_token: str, sid: str = "kuaishou.live.web", eid: str = "",
@@ -1061,13 +1190,26 @@ class KuaishouLiveAPI:
         referer = kwargs.get("referer") or (
             KuaishouLiveAPI.room_referer(eid) if eid else f'{KuaishouLiveAPI.live_url}/')
         context = _live_context(referer)
-        profile = f"live_{context}_login"
+        profile = (_room_cookie_profile(auth, "login") if context == "room"
+                   else _home_cookie_profile(auth, "login") if context == "home"
+                   else f"live_{context}_login")
+        if (context == "room" and
+                not getattr(auth, "_cookie", {}).get("kuaishou.live.web_ph")):
+            # A direct live-page session has no ``live.web_ph`` before the
+            # first userLogin response.  Its first request therefore uses
+            # the explicit bootstrap contract; the regular QR/CP-backed
+            # session keeps the historical room bootstrap sequence.
+            profile = ("live_room_current_login_bootstrap"
+                       if _live_only_session(auth)
+                       else "live_room_login_bootstrap")
         # A mobile-code session has no live.web_ph until this first userLogin
         # response. Select the explicit bootstrap contract instead of sending
         # a fabricated placeholder value.
         if (context == "home" and not getattr(auth, "_cookie", {}).get(
                 "kuaishou.live.web_ph")):
-            profile = "live_home_login_bootstrap"
+            profile = (_home_cookie_profile(auth, "login_bootstrap")
+                       if _live_only_session(auth)
+                       else "live_home_login_bootstrap")
         return KuaishouLiveAPI._post(auth, "/live_api/baseuser/userLogin", body, eid=eid,
                                      referer=referer, cookie_profile=profile)
 
@@ -1087,10 +1229,19 @@ class KuaishouLiveAPI:
                                            HeaderType.POST, sentry=True)
         body = {"userLoginInfo": {"authToken": auth_token, "sid": sid}}
         context = _live_context(referer)
-        profile = f"live_{context}_login"
+        profile = (_room_cookie_profile(auth, "login") if context == "room"
+                   else _home_cookie_profile(auth, "login") if context == "home"
+                   else f"live_{context}_login")
+        if (context == "room" and
+                not getattr(auth, "_cookie", {}).get("kuaishou.live.web_ph")):
+            profile = ("live_room_current_login_bootstrap"
+                       if _live_only_session(auth)
+                       else "live_room_login_bootstrap")
         if (context == "home" and not getattr(auth, "_cookie", {}).get(
                 "kuaishou.live.web_ph")):
-            profile = "live_home_login_bootstrap"
+            profile = (_home_cookie_profile(auth, "login_bootstrap")
+                       if _live_only_session(auth)
+                       else "live_home_login_bootstrap")
         _assert_live_contract(
             auth, "POST", "/live_api/baseuser/userLogin", {}, body,
             profile, True, referer)
@@ -1112,8 +1263,14 @@ class KuaishouLiveAPI:
             # Chrome home sends the first post-login pay request with its own
             # authenticated_1 order; the room keeps the login order through
             # that pay request and advances only afterwards.
-            auth.advance_live_cookie_phase(
-                context, "authenticated_1" if context == "home" else "login")
+            if context == "room" and _live_only_session(auth):
+                # Direct room navigation has no intermediate CP/pay requests;
+                # the next observed request (websocketinfo) uses the
+                # authenticated live-only Cookie order.
+                auth.advance_live_cookie_phase(context, "authenticated")
+            else:
+                auth.advance_live_cookie_phase(
+                    context, "authenticated_1" if context == "home" else "login")
         return ok, issued
 
     @staticmethod
@@ -1409,7 +1566,7 @@ class KuaishouLiveAPI:
             auth, "/live_api/emoji/gift-list", query, eid=eid,
             sentry=kwargs.get("sentry", not interactive),
             cookie_profile=kwargs.get("cookie_profile") or
-            ("live_room_authenticated" if interactive else
+            (_room_cookie_profile(auth, "authenticated") if interactive else
              _current_live_profile(auth, KuaishouLiveAPI.room_referer(eid))))
 
     @staticmethod
@@ -1432,7 +1589,8 @@ class KuaishouLiveAPI:
         return KuaishouLiveAPI._get(
             auth, "/live_api/emoji/panel", eid=eid,
             sentry=kwargs.get("sentry", False),
-            cookie_profile=kwargs.get("cookie_profile") or "live_room_authenticated")
+            cookie_profile=kwargs.get("cookie_profile") or
+            _room_cookie_profile(auth, "authenticated"))
 
     @staticmethod
     def emoji_icon(auth, eid: str = "", **kwargs) -> dict:
@@ -1459,6 +1617,14 @@ class KuaishouLiveAPI:
         referer = kwargs.get("referer") or (
             KuaishouLiveAPI.room_referer(eid) if eid else f'{KuaishouLiveAPI.live_url}/')
         context = _live_context(referer)
+        direct_home = context == "home" and _live_only_session(auth)
+        if (not kwargs.get("cookie_profile") and direct_home
+                and getattr(auth, "_live_cookie_phase", {}).get("home") == "authenticated_1"
+                and getattr(auth, "_live_home_login_pay_count", 0) >= 1
+                and hasattr(auth, "advance_live_cookie_phase")):
+            # Direct live-home's first pay and following userinfo both keep
+            # authenticated_1.  The next pay rotates the page-scoped quartet.
+            auth.advance_live_cookie_phase("home", "authenticated_2")
         profile = kwargs.get("cookie_profile") or _current_live_profile(auth, referer)
         result = KuaishouLiveAPI._get(
             auth, "/live_api/web/pay/get-pay", eid=eid, referer=referer,
@@ -1467,7 +1633,15 @@ class KuaishouLiveAPI:
         if not kwargs.get("cookie_profile") and hasattr(auth, "advance_live_cookie_phase"):
             phases = getattr(auth, "_live_cookie_phase", {}) or {}
             phase = phases.get(context, "initial")
-            if context == "home" and phase == "authenticated_1":
+            if context == "home" and direct_home:
+                if phase == "authenticated_1":
+                    auth._live_home_login_pay_count = (
+                        getattr(auth, "_live_home_login_pay_count", 0) + 1)
+                elif phase == "authenticated_2":
+                    auth._live_home_login_pay_count = (
+                        getattr(auth, "_live_home_login_pay_count", 0) + 1)
+                    auth.advance_live_cookie_phase("home", "authenticated_3")
+            elif context == "home" and phase == "authenticated_1":
                 auth.advance_live_cookie_phase("home", "authenticated_2")
             elif context == "room" and phase == "login":
                 # Current active-room Network keeps the login Cookie order
@@ -1492,7 +1666,7 @@ class KuaishouLiveAPI:
         context = _live_context(referer)
         if delayed:
             profile = ("live_home_delayed" if context == "home"
-                       else "live_room_authenticated")
+                       else _room_cookie_profile(auth, "authenticated"))
         else:
             profile = kwargs.get("cookie_profile") or _current_live_profile(auth, referer)
         return KuaishouLiveAPI._get(
@@ -1529,7 +1703,8 @@ class KuaishouLiveAPI:
                 "feedTypeCursorMap": feed_type_cursor_map or {"1": 0, "2": 0}}
         return KuaishouLiveAPI._post(
             auth, "/live_api/liveroom/recall", body, eid=eid,
-            cookie_profile="live_room_authenticated")
+            cookie_profile=kwargs.get("cookie_profile") or
+            _room_cookie_profile(auth, "authenticated"))
 
     @staticmethod
     def user_info(auth, eid: str = "", **kwargs) -> dict:
@@ -1542,17 +1717,28 @@ class KuaishouLiveAPI:
                 getattr(auth, "_live_room_login_pay_count", 0) >= 2 and
                 hasattr(auth, "advance_live_cookie_phase")):
             auth.advance_live_cookie_phase("room", "authenticated")
-        return KuaishouLiveAPI._post(
+        direct_home = (_live_context(referer) == "home"
+                       and _live_only_session(auth)
+                       and not kwargs.get("cookie_profile"))
+        result = KuaishouLiveAPI._post(
             auth, "/live_api/baseuser/userinfo", {}, eid=eid, referer=referer,
             cookie_profile=kwargs.get("cookie_profile") or
             _current_live_profile(auth, referer))
+        if (direct_home
+                and getattr(auth, "_live_cookie_phase", {}).get("home") == "authenticated_1"
+                and getattr(auth, "_live_home_login_pay_count", 0) >= 1
+                and hasattr(auth, "advance_live_cookie_phase")):
+            # The first post-login pay and userinfo share the same direct-home
+            # Cookie line; rotate only after userinfo for the next pay.
+            auth.advance_live_cookie_phase("home", "authenticated_2")
+        return result
 
     @staticmethod
     def home_list(auth, **kwargs) -> dict:
         """直播首页列表。"""
         return KuaishouLiveAPI._get(auth, "/live_api/home/list",
                                     referer=f'{KuaishouLiveAPI.live_url}/',
-                                    cookie_profile="live_home_initial")
+                                    cookie_profile=_home_cookie_profile(auth, "initial"))
 
     @staticmethod
     def category_simple(auth, **kwargs) -> dict:
@@ -1575,7 +1761,8 @@ class KuaishouLiveAPI:
             auth, "/live_api/home/category",
             referer=f'{KuaishouLiveAPI.live_url}/',
             cookie_profile=kwargs.get("cookie_profile") or
-            "live_home_authenticated_2")
+            _home_cookie_profile(auth, "authenticated_3" if
+                                 _live_only_session(auth) else "authenticated_2"))
 
 
 def _safe_json(resp) -> dict:

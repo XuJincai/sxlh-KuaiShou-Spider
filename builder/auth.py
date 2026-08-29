@@ -104,6 +104,7 @@ class KuaishouAuth:
         # 近似。这里分别保存两条页面状态机；只有真实请求链推进它们。
         self._live_cookie_phase = {
             "home": "initial", "room": "initial", "profile": "initial"}
+        self._live_home_login_pay_count = 0
         self._live_room_login_pay_count = 0
         # Sentry's browser SDK creates one trace id for a page-load transaction
         # and a new span id for every instrumented fetch/XHR. Keep this
@@ -136,6 +137,7 @@ class KuaishouAuth:
         self._cp_ignore_cache = False
         self._live_cookie_phase = {
             "home": "initial", "room": "initial", "profile": "initial"}
+        self._live_home_login_pay_count = 0
         self._live_room_login_pay_count = 0
         self._live_sentry_transactions = {}
         self._onvideo_cookie_phase = (
@@ -524,7 +526,8 @@ class KuaishouAuth:
                                      or profile.startswith("www_graphql_detail_")
                                      or profile.startswith("www_graphql_comment_"))
                       else dict(self._cookie))
-        elif profile in {"live_home_initial", "live_room_initial",
+        elif profile in {"live_home_initial", "live_home_current_initial",
+                         "live_room_initial",
                          "live_room_assets_initial", "live_profile_initial"}:
             values = dict(self._cookie)
         elif profile == "captcha":
@@ -1017,6 +1020,19 @@ class KuaishouAuth:
                 "kuaishou.live.web_st", "kuaishou.live.web_ph", "kwfv1",
                 "kwpsecproductname", "kwssectoken", "kwscode",
             ),
+            # Direct live-page passToken/getCdns before CP is ever visited.
+            "live_pass_token_home_direct": (
+                "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+                "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+            ),
+            "live_pass_token_room_direct": (
+                "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+                "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+            ),
+            "live_pass_token_profile_direct": (
+                "did", "wid", "didv", "bUserId", "kwpsecproductname", "userId",
+                "userId", "passToken", "kwfv1", "kwssectoken", "kwscode",
+            ),
             # Current ordinary reload userLogin reqid 4770 moves the scoped
             # product before kwssectoken/kwscode and keeps kwfv1 last.
             "live_home_login": (
@@ -1034,6 +1050,41 @@ class KuaishouAuth:
                 "kuaishou.web.cp.api_ph", "kuaishou.live.bfb1s", "userId",
                 "kuaishou.live.web_st", "kwpsecproductname", "kwssectoken",
                 "kwscode", "kwfv1",
+            ),
+            "live_home_current_initial": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+                "kwssectoken", "kwscode", "kwfv1",
+            ),
+            "live_home_current_login": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+                "kwssectoken", "kwscode", "kwfv1",
+            ),
+            "live_home_current_login_bootstrap": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kuaishou.live.web_st", "kwssectoken", "kwscode", "kwfv1",
+            ),
+            "live_home_current_authenticated_1": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwssectoken", "kwscode", "kwfv1",
+                "kuaishou.live.web_st", "kuaishou.live.web_ph",
+            ),
+            "live_home_current_authenticated_2": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwfv1", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+                "kwssectoken", "kwscode",
+            ),
+            "live_home_current_authenticated_3": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+                "kwssectoken", "kwscode", "kwfv1",
             ),
             # Fresh Chrome live home first pay after userLogin reqid 130.
             "live_home_authenticated_1": (
@@ -1068,6 +1119,12 @@ class KuaishouAuth:
                 "kwpsecproductname", "kuaishou.live.web_st",
                 "kuaishou.live.web_ph", "kwssectoken", "kwscode", "kwfv1",
             ),
+            "live_room_current_initial": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwfv1", "kwssectoken", "kwscode",
+                "kuaishou.live.web_st", "kuaishou.live.web_ph",
+            ),
             # Chrome 151 room reload reqids 912/913 (2026-08-27).  The page's
             # bootstrap emoji dictionaries use a narrower path-scoped line:
             # no CP tickets, one userId, kwfv1 before the security pair, and
@@ -1086,6 +1143,23 @@ class KuaishouAuth:
                 "kwpsecproductname", "kuaishou.live.web_st",
                 "kuaishou.live.web_ph", "kwssectoken", "kwscode", "kwfv1",
             ),
+            "live_room_login_bootstrap": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv", "userId",
+                "bUserId", "kuaishou.web.cp.api_st", "kuaishou.web.cp.api_ph",
+                "kuaishou.live.bfb1s", "userId", "kwpsecproductname",
+                "kuaishou.live.web_st", "kwssectoken", "kwscode", "kwfv1",
+            ),
+            "live_room_current_login": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwssectoken", "kwscode", "kuaishou.live.web_st",
+                "kuaishou.live.web_ph", "kwfv1",
+            ),
+            "live_room_current_login_bootstrap": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwssectoken", "kwscode", "kuaishou.live.web_st", "kwfv1",
+            ),
             # Latest active-room authenticated userinfo/pay/recall/ws/gift/panel
             # and delayed follow requests keep the same order.
             "live_room_authenticated": (
@@ -1094,6 +1168,12 @@ class KuaishouAuth:
                 "kuaishou.web.cp.api_ph", "kuaishou.live.bfb1s", "userId",
                 "kwpsecproductname", "kuaishou.live.web_st",
                 "kuaishou.live.web_ph", "kwssectoken", "kwscode", "kwfv1",
+            ),
+            "live_room_current_authenticated": (
+                "did", "wid", "clientid", "did", "client_key", "kpn", "didv",
+                "bUserId", "kuaishou.live.bfb1s", "kwpsecproductname", "userId",
+                "userId", "kwfv1", "kuaishou.live.web_st", "kuaishou.live.web_ph",
+                "kwssectoken", "kwscode",
             ),
             # The live userLogout call is narrower than ordinary room APIs:
             # no CP tickets, one userId, and no duplicate userId.  Chrome
@@ -1401,6 +1481,8 @@ class KuaishouAuth:
             f"{key}={value}" for key, value in self._cookie.items())
         if live:
             self._live_cookie_phase["room"] = "initial"
+            self._live_cookie_phase["home"] = "initial"
+            self._live_home_login_pay_count = 0
             self._live_room_login_pay_count = 0
         return self
 
@@ -1450,7 +1532,8 @@ class KuaishouAuth:
         if context not in {"home", "room", "profile"}:
             raise ValueError(f"unknown live context: {context}")
         allowed = {
-            "home": {"initial", "login", "authenticated_1", "authenticated_2"},
+            "home": {"initial", "login", "authenticated_1", "authenticated_2",
+                     "authenticated_3"},
             "room": {"initial", "login", "authenticated"},
             "profile": {"initial", "login", "authenticated_1", "authenticated"},
         }[context]
@@ -1535,6 +1618,8 @@ class KuaishouAuth:
         if product == PRODUCT_NAME_LIVE:
             self._live_cookie_phase = {
                 "home": "initial", "room": "initial", "profile": "initial"}
+            self._live_home_login_pay_count = 0
+            self._live_room_login_pay_count = 0
         href, product = _site_defaults(product)
         # 新页面从导航开始时的当前 Cookie/localStorage 值建立自己的快照。
         page_snapshot = self.kwfv1 or self._cookie.get("kwfv1", "")
@@ -1668,6 +1753,8 @@ class KuaishouAuth:
                 "cp": self._cp_cookie_phase,
                 "onvideo": self._onvideo_cookie_phase,
                 "live": dict(self._live_cookie_phase),
+                "live_home_login_pay_count": self._live_home_login_pay_count,
+                "live_room_login_pay_count": self._live_room_login_pay_count,
             },
             "account_restricted": {
                 "www": bool(self._www_account_restricted),
@@ -1702,6 +1789,10 @@ class KuaishouAuth:
             phases.get("live") or {
                 "home": "initial", "room": "initial", "profile": "initial"})
         self._live_cookie_phase.setdefault("profile", "initial")
+        self._live_home_login_pay_count = int(
+            phases.get("live_home_login_pay_count", 0) or 0)
+        self._live_room_login_pay_count = int(
+            phases.get("live_room_login_pay_count", 0) or 0)
         # A restored login state is not a restored browser page-load span.
         self._live_sentry_transactions = {}
         self.did = self._cookie.get("did", "")

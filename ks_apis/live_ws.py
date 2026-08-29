@@ -74,6 +74,21 @@ class LiveDanmakuClient:
     # ------------------------------------------------------------------ #
     def prepare(self) -> bool:
         """走 REST 拿 liveStreamId + token + wss 地址。"""
+        # A QR/mobile/WWW session may have a valid passToken but no
+        # live.kuaishou.com path-scoped tickets yet. Bootstrap those tickets
+        # before any live REST request so direct live-only sessions can also
+        # use home/list room discovery (its initial request needs the live
+        # page tickets as well).
+        live_cookies = getattr(self.auth, "_cookie", {}) or {}
+        if (not live_cookies.get("kuaishou.live.web_st")
+                or not live_cookies.get("kuaishou.live.web_ph")):
+            from ks_apis.login_api import KuaishouLoginAPI, SID_LIVE
+            refreshed = KuaishouLoginAPI.refresh_site_session(
+                self.auth, SID_LIVE, KuaishouLiveAPI.live_url,
+                referer=KuaishouLiveAPI.room_referer(self.eid))
+            if not refreshed:
+                logger.error("[danmaku] 缺少直播会话票据，且 passToken 换票失败")
+                return False
         state = self.room or KuaishouLiveAPI.get_room_state(self.auth, self.eid)
         self.live_stream_id = state.get("liveStreamId", "")
         if not self.live_stream_id:
