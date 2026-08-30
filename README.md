@@ -133,26 +133,24 @@ python main.py
 - 不要提交账号 Cookie、二维码、会话状态、原始抓包或测试素材
 - 也欢迎通过 [Issue](https://github.com/cv-cat/KuaiShou-Spider/issues) 反馈问题
 
-## 🧸 额外说明
-
-感谢 Star ⭐、Follow 📰 和 Issue 反馈。项目更新会优先放在 GitHub；涉及真实账号和登录态的问题，请先脱敏后再讨论。
-
 ## 📈 Star 趋势
 
 <a href="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date&theme=dark">
-    <source media="(prefers-color-scheme: light)" srcset="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date">
-    <img alt="Star History Chart" src="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date">
+    <source media="(prefers-color-scheme: dark)" srcset="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date" />
+    <img alt="Star History Chart" src="https://cvcat.site/star-history/svg?repos=cv-cat/KuaiShou-Spider&type=Date" />
   </picture>
 </a>
 
+
+
 ## 🍔 交流群
 
-如果你对爬虫、自动化和 AI Agent 感兴趣，欢迎加入群聊一起讨论。
+如果你对爬虫和 AI Agent 感兴趣，可以加入群聊一起讨论~
 
-群二维码可能过期或达到人数上限；遇到失效情况，请通过 [Issue](https://github.com/cv-cat/KuaiShou-Spider/issues) 或作者主页联系更新。
+ps: 请加群，人满或者过期 issue | wx 提醒 | qq提醒
 
-| group-1 | group-2 | group-3 | group-4 |
-| :--: | :--: | :--: | :--: |
-| <img width="260" alt="group1" src="https://cvcat.site/assets/group1.jpg"> | <img width="260" alt="group2" src="https://cvcat.site/assets/group2.jpg"> | <img width="260" alt="group3" src="https://cvcat.site/assets/group3.jpg"> | <img width="260" alt="group4" src="https://cvcat.site/assets/group4.jpg"> |
+| group-1 | group-2 | group-3 | group-4 (2000人qq群) |
+|:--:|:--:|:--:|:--:|
+| <img width="280" alt="group1" src="https://cvcat.site/assets/group1.jpg" /> | <img width="280" alt="group2" src="https://cvcat.site/assets/group2.jpg" /> | <img width="280" alt="group3" src="https://cvcat.site/assets/group3.jpg" /> | <img width="280" alt="group3" src="https://cvcat.site/assets/group4.jpg" /> |
