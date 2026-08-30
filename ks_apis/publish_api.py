@@ -47,6 +47,8 @@ UPLOAD_TYPE_VIDEO = 1
 UPLOAD_TYPE_ATLAS = 10
 # 单张图片上限（bundle: V.size < 15*1024*1024）
 ATLAS_IMAGE_MAX_BYTES = 15 * 1024 * 1024
+# 图文编辑器返回的 atlasImageCountLimit（实抓为 31）。
+ATLAS_IMAGE_MAX_COUNT = 31
 # upload/tips/show 的 tips 数组（实抓默认值）
 DEFAULT_TIPS = ("collectionRedDot", "collectionBubble", "publishPanoramicVideo", "mmuIsNew")
 
@@ -1531,19 +1533,15 @@ class KuaishouPublishAPI:
         （不是 null）。body 进签名，所以这里必须同样省略。
 
         :param auth: KuaishouAuth。
-        :param images: 本次申请的图片路径列表（按实抓惯例只放一张）。
+        :param images: 本次申请的图片路径列表；浏览器每次只申请一张。
         :param atlas_id: 第二张起必须传。
         :param file_id: 第二张起必须传。
         :return: JSON ``data:{atlasId, fileId, uploadInfo:[{token, endPoints, blobKey}, ...]}``。
         """
-        historical = getattr(auth, "_cp_cookie_phase", None) == "historical"
-        if not historical and len(images or []) != 1:
-            raise RuntimeError(
-                "当前重新登录 Chrome 只抓到 pictureCount=1 的单图 upload/pre；"
-                "多图申请顺序没有当前成功合同")
-        if not historical and (atlas_id is not None or file_id is not None):
-            raise RuntimeError(
-                "当前重新登录 Chrome 未抓到携带 atlasId/fileId 的后续图片 upload/pre")
+        if len(images or []) != 1:
+            raise ValueError("atlas_upload_pre 每次必须只传一张图片")
+        if (atlas_id is None) != (file_id is None):
+            raise ValueError("atlas_upload_pre 的 atlasId/fileId 必须同时为空或同时提供")
         extend_names = [{"fileExtendName": mimetypes.guess_type(p)[0] or "image/jpeg"}
                         for p in images]
         body = {}
@@ -2026,30 +2024,41 @@ class KuaishouPublishAPI:
         这里转换到一个临时目录，随后整个上传链都使用转换后的 PNG，流程结束
         后自动清理。这样 demo、业务代码和直接调用者共享同一套 MIME/内容规则。
         """
+        if isinstance(images, (str, bytes, os.PathLike)):
+            images = [images]
         if not images:
             raise ValueError("images 不能为空")
         with ExitStack() as cleanup:
             images = _prepare_atlas_images(images, cleanup)
+            if not 1 <= len(images) <= ATLAS_IMAGE_MAX_COUNT:
+                raise ValueError(
+                    f"图文图片数量必须在 1～{ATLAS_IMAGE_MAX_COUNT} 张之间")
             for path in images:
                 if os.path.getsize(path) >= ATLAS_IMAGE_MAX_BYTES:
                     raise ValueError(f"{path} 超过 15MB，前端会直接拒绝")
+                if os.path.getsize(path) > CHUNK_SIZE:
+                    raise RuntimeError(
+                        "当前上传合同只验证单片文件（不超过 4MB）；"
+                        f"请压缩图片后重试: {path}")
 
             historical = getattr(auth, "_cp_cookie_phase", None) == "historical"
+            snapshot = None
+            after_resume_done = False
             if not historical:
-                if len(images) != 1:
-                    raise RuntimeError(
-                        "当前重新登录 Chrome 仅验证单张 PNG 图文；后续图片的 pre/上传顺序未抓到")
-                path = images[0]
-                if (mimetypes.guess_type(path)[0] or "") != "image/png":
-                    raise RuntimeError("当前图文 upload/pre 只抓到 image/png，其他格式拒绝猜测")
-                size = os.path.getsize(path)
-                if size > CHUNK_SIZE:
-                    raise RuntimeError(
-                        "当前图文只抓到一片上传；超过 4MB 会进入未验证的多分片分支")
-
+                # QR/phone login finishes on the www product (kuaishou-vision).
+                # The creator-shell authority request is the CP page contract
+                # and must be sent after entering the ordinary CP context
+                # (onvideo-cp). The first atlas-specific request below then
+                # rotates to the atlas upload context as Chrome does.
+                use_site = getattr(auth, "use_site", None)
+                current_product = ((getattr(auth, "_cookie", {}) or {})
+                                   .get("kwpsecproductname") or "")
+                if callable(use_site) and current_product != "onvideo-cp":
+                    use_site("https://cp.kuaishou.com")
                 KuaishouPublishAPI.require_publish_authority(auth)
 
-                # Exact page-12 order after the image chooser completed.
+                # These page-12 requests happen once after selecting the atlas,
+                # before the first upload/pre. They must not be repeated per image.
                 preflight = (
                     ("atlas realize/entrance", KuaishouPublishAPI.atlas_realize_entrance(auth)),
                     ("atlas activity/list initial",
@@ -2061,22 +2070,37 @@ class KuaishouPublishAPI:
                     if response.get("result") != 1:
                         raise RuntimeError(f"{label} 未通过: {response}")
 
-                pre = KuaishouPublishAPI.atlas_upload_pre(auth, [path])
+            file_id, atlas_id = None, None
+            blob_keys, urls = [], []
+            for idx, path in enumerate(images):
+                # Browser contract: one upload/pre per picture. The first call
+                # creates the atlas; subsequent calls carry the returned IDs.
+                pre = KuaishouPublishAPI.atlas_upload_pre(
+                    auth, [path], atlas_id=atlas_id, file_id=file_id)
                 if pre.get("result") != 1:
-                    raise RuntimeError(f"atlas upload/pre 失败: {pre.get('message')} / {pre}")
+                    raise RuntimeError(
+                        f"第 {idx + 1} 张 atlas upload/pre 失败: "
+                        f"{pre.get('message')} / {pre}")
                 data = pre.get("data") or {}
-                file_id, atlas_id = data.get("fileId"), data.get("atlasId")
+                file_id = data.get("fileId") or file_id
+                atlas_id = data.get("atlasId") or atlas_id
                 one = data.get("uploadInfo") or []
                 if not file_id or not atlas_id or len(one) != 1:
-                    raise RuntimeError(f"atlas upload/pre 当前响应形状不完整: {data}")
+                    raise RuntimeError(
+                        f"第 {idx + 1} 张 atlas upload/pre 响应形状不完整: {data}")
                 info = one[0]
                 token = info.get("token")
                 endpoints = info.get("endPoints") or info.get("endpoints") or []
                 blob_key = info.get("blobKey")
                 if not token or not endpoints or not blob_key:
-                    raise RuntimeError(f"atlas upload/pre 未下发 token/endPoints/blobKey: {info}")
+                    raise RuntimeError(
+                        f"第 {idx + 1} 张 atlas upload/pre 未下发 "
+                        f"token/endPoints/blobKey: {info}")
 
                 def after_resume(_resume_response):
+                    nonlocal after_resume_done
+                    if historical or after_resume_done:
+                        return
                     followups = (
                         ("atlas activity/list post_resume",
                          KuaishouPublishAPI.atlas_activity_list(auth, phase="post_resume")),
@@ -2086,6 +2110,7 @@ class KuaishouPublishAPI:
                     for label, response in followups:
                         if response.get("result") != 1:
                             raise RuntimeError(f"{label} 未通过: {response}")
+                    after_resume_done = True
 
                 with open(path, "rb") as fp:
                     KsUploader(token, endpoints).upload_bytes(
@@ -2093,51 +2118,33 @@ class KuaishouPublishAPI:
                 done = KuaishouPublishAPI.atlas_upload_single_finish(
                     auth, file_id, atlas_id, blob_key)
                 if done.get("result") != 1:
-                    raise RuntimeError(f"atlas upload/single/finish 失败: {done}")
-                snapshot = KuaishouPublishAPI.atlas_publish_info_snapshot_save(
-                    auth, file_id, atlas_id)
-                if snapshot.get("result") != 1:
-                    raise RuntimeError(f"atlas publishInfo/snapshot/save 失败: {snapshot}")
-                url_list = (done.get("data") or {}).get("url") or []
-                if on_progress:
-                    on_progress(1, 1)
-                return {
-                    "fileId": file_id,
-                    "atlasId": atlas_id,
-                    "blobKeys": [blob_key],
-                    "urls": [url_list[0].get("url") if url_list else None],
-                    "snapshot": snapshot,
-                }
-
-            file_id, atlas_id, infos = None, None, []
-            for path in images:
-                pre = KuaishouPublishAPI.atlas_upload_pre(auth, [path], atlas_id, file_id)
-                if pre.get("result") != 1:
-                    raise RuntimeError(f"atlas upload/pre 失败: {pre.get('message')} / {pre}")
-                data = pre.get("data") or {}
-                file_id, atlas_id = data.get("fileId"), data.get("atlasId")
-                one = (data.get("uploadInfo") or [])
-                if not one:
-                    raise RuntimeError(f"atlas upload/pre 未返回 uploadInfo: {data}")
-                infos.append(one[0])
-
-            blob_keys, urls = [], []
-            for idx, (path, info) in enumerate(zip(images, infos)):
-                endpoints = info.get("endPoints") or info.get("endpoints") or []
-                with open(path, "rb") as fp:
-                    KsUploader(info.get("token"), endpoints).upload_bytes(fp.read(),
-                                                                         os.path.basename(path))
-                blob_key = info.get("blobKey")
-                done = KuaishouPublishAPI.atlas_upload_single_finish(auth, file_id, atlas_id, blob_key)
-                if done.get("result") != 1:
-                    raise RuntimeError(f"第 {idx + 1} 张 single/finish 失败: {done.get('message')}")
+                    raise RuntimeError(
+                        f"第 {idx + 1} 张 atlas upload/single/finish 失败: {done}")
                 blob_keys.append(blob_key)
                 url_list = (done.get("data") or {}).get("url") or []
                 urls.append(url_list[0].get("url") if url_list else None)
                 if on_progress:
                     on_progress(idx + 1, len(images))
 
-            return {"fileId": file_id, "atlasId": atlas_id, "blobKeys": blob_keys, "urls": urls}
+            # The current one-picture editor saves an automatic draft snapshot.
+            # The retained multi-picture contract goes straight from the
+            # per-picture finishes to atlas upload/finish, so do not invent a
+            # snapshot request for multi-picture publishes.
+            if not historical and len(images) == 1:
+                snapshot = KuaishouPublishAPI.atlas_publish_info_snapshot_save(
+                    auth, file_id, atlas_id)
+                if snapshot.get("result") != 1:
+                    raise RuntimeError(
+                        f"atlas publishInfo/snapshot/save 失败: {snapshot}")
+            result = {
+                "fileId": file_id,
+                "atlasId": atlas_id,
+                "blobKeys": blob_keys,
+                "urls": urls,
+            }
+            if snapshot is not None:
+                result["snapshot"] = snapshot
+            return result
 
 
 # --------------------------------------------------------------------------- #
