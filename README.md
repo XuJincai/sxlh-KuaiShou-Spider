@@ -33,7 +33,8 @@
 
 ## 🎨 项目预览
 
-仓库首页 Logo 和示例入口用于快速了解项目；真实账号、Cookie、二维码、抓包和发布素材不会放入仓库。
+<img width="1609" height="460" alt="image" src="https://github.com/user-attachments/assets/f57df582-34e0-40c7-a034-c526ac1ff832" />
+
 
 ### 快速验证
 
