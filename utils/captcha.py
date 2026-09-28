@@ -39,6 +39,7 @@ from PIL import Image
 
 from utils.sign import captcha_crypto
 from utils import captcha_fp
+from utils.fingerprint import get_profile
 from utils.transport import shared_session
 
 requests.packages.urllib3.disable_warnings()
@@ -47,8 +48,7 @@ HOST = "https://captcha.zt.kuaishou.com"
 CONFIG_URL = f"{HOST}/rest/zt/captcha/sliding/config"
 TIMEOUT = (10, 30)
 
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36")
+UA = get_profile()["ua"]
 
 
 def extract_captcha_url(risk_response: dict) -> str:
@@ -185,7 +185,8 @@ class SlidingCaptcha:
     def __init__(self, session: str, cookies=None, referer: str = "",
                  http: requests.Session = None, did: str = "",
                  kww: str = "", cookie_header: str = "",
-                 parent_url: str = "", script_urls=None):
+                 parent_url: str = "", script_urls=None,
+                 fingerprint: dict = None):
         """:param session: 风控响应里的 captchaSession。
         :param cookies: 业务侧 cookie（同域才有意义，可不传）。
         :param referer: iframe 的完整 url，作 Referer 用。
@@ -202,6 +203,9 @@ class SlidingCaptcha:
             使用它，不能误写成 captcha iframe 所在域。
         :param script_urls: 本次 verification-captcha `/s/w/c` 下发并执行的
             exact fpUrl/signUrl，进入 gdfp detectjsFiles 字段。
+        :param fingerprint: 可选的真实浏览器采集结果，形如
+            ``{"gpuInfo": {...}, "captchaExtraParam": {...}}``。传入后
+            优先使用它，避免把随包的旧机器指纹带入 verify。
         """
         self.session = session
         self.cookies = dict(cookies or {}) if isinstance(cookies, dict) else {}
@@ -225,9 +229,11 @@ class SlidingCaptcha:
             self.did = cookies.get("did", "")
         else:
             self.did = ""
-        # 指纹覆盖：在同一台机器上长期运行不需要改；换机器时传入真实值
-        self.gpu_info: dict = None           # None = 用 captcha_fp.GPU_INFO 默认值
-        self.captcha_extra_param: dict = None   # None = 用 CAPTCHA_EXTRA_PARAM 默认值
+        # 指纹覆盖：在同一台机器上长期运行不需要改；换机器时传入真实值。
+        fp = fingerprint if isinstance(fingerprint, dict) else {}
+        self.gpu_info: dict = fp.get("gpuInfo") or fp.get("gpu_info")
+        self.captcha_extra_param: dict = (
+            fp.get("captchaExtraParam") or fp.get("captcha_extra_param"))
         # Do not mutate shared-session defaults here.  The browser sends
         # different headers for config/verify XHR versus image subresources;
         # each request gets an explicit profile from ``_headers`` below.
