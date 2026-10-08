@@ -1105,6 +1105,8 @@ class KuaishouAPI:
                 cookie_header=captcha_context["cookie_header"],
                 parent_url=referer or KuaishouAPI.reco_referer,
                 script_urls=captcha_context.get("script_urls"),
+                fingerprint=(getattr(auth, "captcha_fingerprint", None)
+                             or captcha_context.get("fingerprint")),
             )
             result = solver.solve()
         except Exception as exc:                               # noqa: BLE001

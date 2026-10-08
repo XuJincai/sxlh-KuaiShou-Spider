@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 from utils import gdfp_manmachine as common
 from utils.fingerprint import get_profile
-from utils.transport import http_version_label, is_http2
+from utils.transport import http_version_label, is_http11, is_http2
 
 BUSS_TYPE = common.BUSS_TYPE_VISION
 SDK_VERSION = "1.6.0"
@@ -369,10 +369,10 @@ def _validate_response(response, *, role: str, expected: bytes) -> dict:
         raise RuntimeError(
             f"vision {role} response content-type drift: {content_type!r}")
     version = getattr(response, "http_version", "")
-    if not is_http2(version):
+    if not is_http2(version) and (not is_http11(version) or common._strict_http2()):
         raise RuntimeError(
-            f"vision {role} did not negotiate captured HTTP/2; "
-            f"actual http_version={version or 'unknown'}")
+            f"vision {role} negotiated an unsupported HTTP version; "
+            f"actual http_version={http_version_label(version) or 'unknown'}")
     try:
         envelope = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

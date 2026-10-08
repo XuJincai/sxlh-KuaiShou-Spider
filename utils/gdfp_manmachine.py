@@ -68,6 +68,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import random
 import re
 import string
@@ -96,6 +97,7 @@ MAN_MACHINE_INIT_RESPONSE = (
     b'"eyJzd2l0Y2giOjEsIm1heEJhdGNoTGVuZ3RoIjo1MCwid2FpdCI6MTAwMCwiZW5hYmxlTmF0aXZlIjoxLCJqc3ZlciI6IjEuMC4xIiwicmVwb3J0Q29uZmlnIjp7InJlcG9ydFVybHMiOlsiL24vYS9iIl19LCJwb2xpY3lJZCI6MjU0LCJwdmVyIjoiMS4wLjIiLCJzdGF0dXMiOjF9"}'
 )
 REPORT_RESPONSE = b'{"result":1,"error_msg":""}'
+ENV_STRICT_HTTP2 = "KS_STRICT_GDFP_HTTP2"
 
 GAME_LIVE_INIT_CONFIG = {
     "switch": 1,
@@ -215,6 +217,19 @@ def _script_list(script_urls=None) -> list:
     return out
 
 
+def _browser_profile() -> dict:
+    """Return the single browser profile shared by all anti-abuse payloads."""
+    from utils.fingerprint import get_profile
+    return get_profile()
+
+
+def _profile_resolution(profile: dict) -> str:
+    geo = profile.get("geo") or ()
+    width = profile.get("screen_width") or (geo[6] if len(geo) > 6 else 2560)
+    height = profile.get("screen_height") or (geo[7] if len(geo) > 7 else 1440)
+    return f"{int(width)}x{int(height)}"
+
+
 def _cookie_fingerprint(cookies: dict) -> dict:
     line = "; ".join(f"{key}={value}" for key, value in cookies.items())
     return {"ci": len(line), "ih": _md5(line)}
@@ -263,7 +278,7 @@ def _timings(begin_ms: int, now_ms: int, whole: bool = False) -> dict:
 
 def build_core_payload(did: str, user_id: str, cookies: dict,
                        parent_url: str, iframe_url: str,
-                       ua: str, resolution: str = "2560x1440",
+                       ua: str, resolution: str = None,
                        identity: str = None, now_ms: int = None,
                        begin_ms: int = None, session_id: str = None,
                        script_urls=None) -> dict:
@@ -280,6 +295,8 @@ def build_core_payload(did: str, user_id: str, cookies: dict,
     :param now_ms: 毫秒时间戳。
     :param begin_ms: SDK 初始化时刻（用于 initTime 与 ts 计时块）。
     """
+    profile = _browser_profile()
+    resolution = resolution or _profile_resolution(profile)
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     begin_ms = now_ms - random.randint(600, 1400) if begin_ms is None else int(begin_ms)
     identity = identity or str(uuid.uuid4())
@@ -301,7 +318,7 @@ def build_core_payload(did: str, user_id: str, cookies: dict,
         "33": "Mozilla",
         "34": "Netscape",
         "35": ua.split("Mozilla/", 1)[-1] if "Mozilla/" in ua else ua,
-        "36": "Win32",
+        "36": profile.get("platform", "Win32"),
         "55": 0,
         "56": ua,
         "69": "0043c0b8a0b002e8133a140d14068859",
@@ -373,7 +390,7 @@ def _webrtc_fields() -> tuple[str, str]:
 
 def build_whole_payload(did: str, user_id: str, cookies: dict,
                         parent_url: str, iframe_url: str, ua: str,
-                        resolution: str = "2560x1440", identity: str = None,
+                        resolution: str = None, identity: str = None,
                         now_ms: int = None, begin_ms: int = None,
                         session_id: str = None, script_urls=None,
                         report_path: str = URL_CORE_REPORT) -> dict:
@@ -383,6 +400,8 @@ def build_whole_payload(did: str, user_id: str, cookies: dict,
     report.  Field presence and insertion order follow reqid 1256; ephemeral
     UUID/WebRTC/timing values are regenerated rather than replayed.
     """
+    profile = _browser_profile()
+    resolution = resolution or _profile_resolution(profile)
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     begin_ms = now_ms - 1520 if begin_ms is None else int(begin_ms)
     identity = identity or str(uuid.uuid4())
@@ -409,14 +428,16 @@ def build_whole_payload(did: str, user_id: str, cookies: dict,
         "29": report_path, "30": "production", "31": 1, "32": "0.00",
         "33": "Mozilla", "34": "Netscape",
         "35": ua.split("Mozilla/", 1)[-1] if "Mozilla/" in ua else ua,
-        "36": "Win32", "37": '["zh-CN","zh","en","zh-TW","ja"]',
-        "41": "20030107", "42": "Google Inc.", "43": "", "44": 20,
+        "36": profile.get("platform", "Win32"),
+        "37": json.dumps(["zh-CN", "zh", "en", "zh-TW", "ja"],
+                         separators=(",", ":")),
+        "41": "20030107", "42": "Google Inc.",
+        "43": "", "44": int(profile.get("cpu_core_num") or 20),
         "50": 10, "51": "", "52": 1, "53": "Gecko", "54": True,
         "55": 0, "56": ua, "57": "zh-CN",
         "58": PLUGIN_LIST, "59": MIME_LIST,
-        "61": "Google Inc. (NVIDIA)",
-        "62": ("ANGLE (NVIDIA, NVIDIA GeForce RTX 5060 Ti (0x00002D04) "
-               "Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+        "61": profile.get("webgl_vendor", "Google Inc. (NVIDIA)"),
+        "62": profile.get("webgl_renderer", ""),
         "63": "1", "64": "WebKit",
         "65": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
         "66": "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)",
@@ -428,7 +449,11 @@ def build_whole_payload(did: str, user_id: str, cookies: dict,
                "n": {"pc": 0, "kc": 0, "lc": 82}},
         "79": _call_stack("whole"), "80": "2200", "81": "1032",
         "82": native, "85": candidates, "86": sdp,
-        "87": {"w": 2560, "h": 1440, "c": 24, "p": 24},
+        "87": {
+            "w": int(profile.get("screen_width") or 2560),
+            "h": int(profile.get("screen_height") or 1440),
+            "c": 24, "p": 24,
+        },
         "88": _md5(sdp), "89": _timings(begin_ms, now_ms, whole=True),
         "90": "", "100": 11, "101": {"lsc": 10, "ssc": 2},
         "102": 50, "103": {"en": False, "isF": False},
@@ -545,11 +570,11 @@ def game_live_init(did: str, referer: str, session=None,
         raise RuntimeError(
             f"unknown gameLive SDK_INIT policy/config; refusing drift: {config!r}")
     version = getattr(response, "http_version", "")
-    from utils.transport import http_version_label, is_http2
-    if not is_http2(version):
+    from utils.transport import http_version_label, is_http11, is_http2
+    if not is_http2(version) and (not is_http11(version) or _strict_http2()):
         raise RuntimeError(
-            "gdfp gameLive SDK_INIT did not negotiate captured HTTP/2; "
-            f"actual http_version={version or 'unknown'}")
+            "gdfp gameLive SDK_INIT negotiated an unsupported HTTP version; "
+            f"actual http_version={http_version_label(version) or 'unknown'}")
     return {"response": envelope, "config": config,
             "http_version": http_version_label(version)}
 
@@ -589,6 +614,33 @@ def _response_content_type(response) -> str:
         return ""
 
 
+def _strict_http2() -> bool:
+    """Whether to restore the old fail-closed HTTP/2-only behavior.
+
+    The captured gdfp request used HTTP/2, but the same endpoint currently
+    negotiates HTTP/1.1 for some networks. Treating that normal fallback as a
+    protocol error prevents the captcha request from ever reaching verify.
+    Set ``KS_STRICT_GDFP_HTTP2=1`` only for forensic wire-contract checks.
+    """
+    return str(os.environ.get(ENV_STRICT_HTTP2, "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _validate_http_version(response, *, role: str) -> str:
+    """Accept the endpoint's normal HTTP/1.1 fallback and return its label."""
+    from utils.transport import http_version_label, is_http11, is_http2
+
+    version = getattr(response, "http_version", "")
+    if is_http2(version):
+        return http_version_label(version)
+    if is_http11(version) and not _strict_http2():
+        return http_version_label(version)
+    raise RuntimeError(
+        f"gdfp manMachine {role} negotiated an unsupported HTTP version; "
+        f"actual http_version={http_version_label(version) or 'unknown'}")
+
+
 def _raw_response(response) -> bytes:
     content = getattr(response, "content", None)
     if isinstance(content, bytes):
@@ -609,12 +661,7 @@ def _validate_man_machine_init(response) -> dict:
         raise RuntimeError(
             "gdfp manMachine SDK_INIT content-type drift: "
             f"{content_type!r}")
-    from utils.transport import is_http2
-    version = getattr(response, "http_version", "")
-    if not is_http2(version):
-        raise RuntimeError(
-            "gdfp manMachine SDK_INIT did not negotiate captured HTTP/2; "
-            f"actual http_version={version or 'unknown'}")
+    _validate_http_version(response, role="SDK_INIT")
     raw = _raw_response(response)
     if raw != MAN_MACHINE_INIT_RESPONSE:
         raise RuntimeError(
@@ -635,7 +682,7 @@ def _validate_man_machine_init(response) -> dict:
 
 
 def _validate_man_machine_response(response, *, role: str) -> dict:
-    """Validate the exact successful H2 JSON envelope before continuing."""
+    """Validate the successful JSON envelope and negotiated protocol."""
     response.raise_for_status()
     if getattr(response, "status_code", None) != 200:
         raise RuntimeError(
@@ -645,12 +692,7 @@ def _validate_man_machine_response(response, *, role: str) -> dict:
     if content_type != RESPONSE_CONTENT_TYPE:
         raise RuntimeError(
             f"gdfp manMachine {role} content-type drift: {content_type!r}")
-    from utils.transport import is_http2
-    version = getattr(response, "http_version", "")
-    if not is_http2(version):
-        raise RuntimeError(
-            f"gdfp manMachine {role} did not negotiate captured HTTP/2; "
-            f"actual http_version={version or 'unknown'}")
+    _validate_http_version(response, role=role)
     raw = _raw_response(response)
     if raw != REPORT_RESPONSE:
         raise RuntimeError(
@@ -669,7 +711,7 @@ def _validate_man_machine_response(response, *, role: str) -> dict:
 
 def report(http, did: str, user_id: str, cookies: dict,
            parent_url: str, iframe_url: str, ua: str,
-           resolution: str = "2560x1440", identity: str = None,
+           resolution: str = None, identity: str = None,
            timeout=(10, 30), script_urls=None) -> dict:
     """打完整 manMachine 预检（SDK_INIT -> core /n/a/b -> whole /n/a/b）。
 

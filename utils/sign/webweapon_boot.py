@@ -62,6 +62,11 @@ PREFLIGHT_CACHE_ATTR = "_ks_gdfp_swc_preflight_cache"
 ENV_STRICT_HTTP2 = "KS_STRICT_GDFP_HTTP2"
 
 
+def _browser_user_agent() -> str:
+    from utils.fingerprint import get_profile
+    return get_profile()["ua"]
+
+
 def _strict_http2() -> bool:
     """Whether a gdfp HTTP/1.1 downgrade should fail closed.
 
@@ -238,10 +243,7 @@ def _ensure_cors_preflight(http, *, url: str, origin: str, referer: str,
         "access-control-request-method": "POST",
         "origin": origin,
         "sec-fetch-mode": "cors",
-        "user-agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/151.0.0.0 Safari/537.36"),
+        "user-agent": _browser_user_agent(),
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7,ja;q=0.6",
         "priority": "u=1, i",
@@ -318,8 +320,7 @@ def fetch_config(did: str, product_name: str = PRODUCT_WWW,
     # application header insertion order separate from same-origin www
     # traffic (which is HTTP/1.1 and has no priority).
     headers = {
-        "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+        "user-agent": _browser_user_agent(),
         "content-type": "application/json",
         "referer": referer,
         "accept": "*/*",
@@ -396,9 +397,7 @@ def report_fingerprint(did: str, product_name: str = PRODUCT_CP,
     else:
         http = session
     headers = {
-        "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/151.0.0.0 Safari/537.36"),
+        "user-agent": _browser_user_agent(),
         "content-type": "application/json",
         "referer": referer,
         "accept": "*/*",

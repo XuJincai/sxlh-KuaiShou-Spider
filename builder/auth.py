@@ -117,6 +117,23 @@ class KuaishouAuth:
         self._kww_signer = None
         self._last_login_result = None
         self._live_bootstrap_enabled = False
+        # Optional real browser captcha fingerprint captured from the iframe.
+        # Keep it separate from webweapon cookies so a refreshed ticket does
+        # not silently reintroduce the package's stale default fingerprint.
+        self.captcha_fingerprint = None
+
+    def set_captcha_fingerprint(self, fingerprint: dict):
+        """Use a browser-captured fingerprint for automatic slider submits.
+
+        ``fingerprint`` is the object returned by ``utils.captcha_fp``'s
+        ``capture_js`` snippet: ``gpuInfo`` plus ``captchaExtraParam``.  The
+        value is retained for this auth session and is intentionally not
+        serialized into cookies or exported auth state.
+        """
+        if fingerprint is not None and not isinstance(fingerprint, dict):
+            raise TypeError("captcha fingerprint must be a dict or None")
+        self.captcha_fingerprint = dict(fingerprint) if fingerprint else None
+        return self
 
     def prepare_auth(self, cookie_str: str):
         """解析 cookie 字符串，抽取关键字段并配置 webweapon 会话。

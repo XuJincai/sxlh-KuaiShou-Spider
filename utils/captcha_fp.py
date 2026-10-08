@@ -53,13 +53,13 @@ key7..key14           屏幕与窗口尺寸：screenW/H、availW/H、innerH、ou
 key15                 ``"00000111"`` 能力位掩码
 key18..key25          各阶段事件耗时（``"0,103,-1,-1,-1,prepare1"`` 这种）
 key26                 鼠标/触摸轨迹汇总（key27 是主轨迹数组）
-key35/key36           会话级哈希
+key35/key36           稳定的浏览器 Canvas/环境哈希
 key37/key38/key39     ``1`` / ``"not support"`` / 逻辑核数
 ===================  ==========================================================
 
-**指纹哈希与设备强绑定**：默认值取自 2026-08-16 的实测机器（RTX 5060 Ti /
-2560x1440 / 20 核）。换机器跑**必须重抓**，否则指纹与其它信号（UA、分辨率）
-自相矛盾，反而更容易被判异常。
+**指纹哈希与设备强绑定**：默认值取自当前 Chrome 151 的实测机器（RTX 5060 Ti /
+2560x1440 / 20 核）。换机器跑**必须通过 ``capture_js`` 重抓**，然后把结果传给
+``KuaishouAuth.set_captcha_fingerprint``，否则指纹与其它信号（UA、分辨率）会自相矛盾。
 """
 
 from __future__ import annotations
@@ -68,8 +68,10 @@ import json
 import random
 import time
 
+from utils.fingerprint import get_profile
+
 # --------------------------------------------------------------------------- #
-# 真实浏览器实测值（CDP @ captcha.zt.kuaishou.com/iframe/index.html，2026-08-16）#
+# 真实浏览器实测值（CDP @ captcha.zt.kuaishou.com/iframe/index.html，Chrome 151）#
 # --------------------------------------------------------------------------- #
 GPU_INFO = {
     "glRenderer": "WebKit WebGL",
@@ -79,8 +81,7 @@ GPU_INFO = {
     "unmaskVendor": "Google Inc. (NVIDIA)",
 }
 
-_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36")
+_UA = get_profile()["ua"]
 
 # Ga() 的完整产物。键序即 JSON.stringify 的输出序，不要重排。
 CAPTCHA_EXTRA_PARAM = {
@@ -103,12 +104,12 @@ CAPTCHA_EXTRA_PARAM = {
     "pixelDepth": "24",
     "colorDepth": "24",
     # 下面这些成对出现的就是 Ua 别名表（同值两份），共 12 对
-    "canvasGraphFingerPrint": "1109b083cc4701a442fe7846d074394f1",
-    "canvasGraph": "1109b083cc4701a442fe7846d074394f1",
-    "canvasTextFingerPrintEn": "12e6f0f06266fb6bc7b5ddb5be6c0be3e",
-    "canvasTextEn": "12e6f0f06266fb6bc7b5ddb5be6c0be3e",
-    "canvasTextFingerPrintZh": "1cfe96b611a4ada0f3ed6c5d9da0eb406",
-    "canvasTextZh": "1cfe96b611a4ada0f3ed6c5d9da0eb406",
+    "canvasGraphFingerPrint": "16d9e8c3c415322269b38d1449ec153ea",
+    "canvasGraph": "16d9e8c3c415322269b38d1449ec153ea",
+    "canvasTextFingerPrintEn": "11f6fbca159129e1aa778346fbe0b9c6d",
+    "canvasTextEn": "11f6fbca159129e1aa778346fbe0b9c6d",
+    "canvasTextFingerPrintZh": "1c086b7340d764f7c141910da1af587f2",
+    "canvasTextZh": "1c086b7340d764f7c141910da1af587f2",
     "webglGraphFingerPrint": "1537e3a006691fc8474abd41438c08a5d",
     "webglGraph": "1537e3a006691fc8474abd41438c08a5d",
     "webglGPUFingerPrint": "1192e522040bbe560567d4321fed3c16a",
@@ -117,8 +118,8 @@ CAPTCHA_EXTRA_PARAM = {
     "fontListEn": "1e4c353075d9fe0c911b00a7f7dba2f26",
     "cssFontFingerPrintZh": "154ef9bb94c26d3f7b091868f7a41c387",
     "fontListZh": "154ef9bb94c26d3f7b091868f7a41c387",
-    "voiceFingerPrint": "1dd96cac4e826abdbbe261dc4f3a08292",
-    "audioTriangle": "1dd96cac4e826abdbbe261dc4f3a08292",
+    "voiceFingerPrint": "1e49aa834eb6783f919c45022f2fcf7ef",
+    "audioTriangle": "1e49aa834eb6783f919c45022f2fcf7ef",
     "nativeFunc": "1973dcbb27a04c3a2ee240d9d2549e105",
     # Placeholder only; every request replaces key1 with the session did.
     # Keep no captured device identifier in the published source tree.
@@ -129,10 +130,10 @@ CAPTCHA_EXTRA_PARAM = {
     "key5": "zh-CN",
     "key6": "Gecko",                                    # navigator.product
     "key7": 2560, "key8": 1440,                         # screen.width / height
-    "key9": 2560, "key10": 1392,                        # availWidth / availHeight
-    "key11": 1215,                                      # innerHeight
-    "key12": 2560, "key13": 1392,                       # outerWidth / outerHeight
-    "key14": 2560,
+    "key9": 2560, "key10": 1440,                        # availWidth / availHeight
+    "key11": 1440,                                      # innerHeight
+    "key12": 2560, "key13": 1460,                       # innerWidth / outerHeight
+    "key14": 2576,                                      # outerWidth
     "key15": "00000111",                                # 能力位掩码
     "key16": 1, "key17": 1,
     "key18": ["0,103,-1,-1,-1,prepare1"],
@@ -155,7 +156,7 @@ CAPTCHA_EXTRA_PARAM = {
         "key31": {"prepare1": "9,1,41022,1385,2"},
         "key32": {}, "key33": {}, "key34": {},
     },
-    "key35": "53b4153471329902b90af6e81a017253",
+    "key35": "c1740e16914faedad278c0a1dea75811",
     "key36": "f22a94013fc94e90e2af2798023a1985",
     "key37": 1,
     "key38": "not support",
@@ -172,17 +173,14 @@ def _session_fields(now_ms: int) -> dict:
     - ``key26.key27``：鼠标/触摸轨迹数组，格式
       ``"<序号>,<按键>,<时间戳低位>,<x>,<y>,prepare1"``；
     - ``key26.key31``：轨迹的最后一条（同格式，不带序号前缀的那份）；
-    - ``key35`` / ``key36``：会话级 32 位 hex 哈希。
+    - ``key35`` / ``key36``：稳定的浏览器 Canvas/环境哈希，由 profile 保留。
 
-    **原样重放上次采集的值 = 每次验证的鼠标轨迹一模一样**，服务端一比就知道是回放，
-    直接回 ``350014 anti check err``。实测把这些改成每次现算之后才有戏。
+    **原样重放上次采集的 key18~key26 = 每次验证的鼠标轨迹一模一样**，服务端一比
+    就知道是回放，直接回 ``350014 anti check err``。浏览器级 key35/key36 不能随机改写。
 
     :param now_ms: 当次的毫秒时间戳（与 key2 保持一致）。
     """
     rnd = random.Random(now_ms ^ random.getrandbits(32))
-
-    def _hex32() -> str:
-        return "".join(rnd.choice("0123456789abcdef") for _ in range(32))
 
     # 事件耗时：真实值在 100ms 上下浮动
     def _timing() -> tuple:
@@ -224,8 +222,6 @@ def _session_fields(now_ms: int) -> dict:
             "key31": {"prepare1": last},
             "key32": {}, "key33": {}, "key34": {},
         },
-        "key35": _hex32(),
-        "key36": _hex32(),
     }
 
 
@@ -234,7 +230,13 @@ def gpu_info_json(overrides: dict = None) -> str:
 
     :param overrides: 换机器时覆盖其中若干键。
     """
-    info = dict(GPU_INFO)
+    profile = get_profile()
+    info = {
+        "glRenderer": "WebKit WebGL",
+        "glVendor": "WebKit",
+        "unmaskRenderer": profile.get("webgl_renderer", GPU_INFO["unmaskRenderer"]),
+        "unmaskVendor": profile.get("webgl_vendor", GPU_INFO["unmaskVendor"]),
+    }
     info.update(overrides or {})
     ordered = {k: info[k] for k in ("glRenderer", "glVendor",
                                     "unmaskRenderer", "unmaskVendor")
@@ -251,18 +253,68 @@ def captcha_extra_param_json(overrides: dict = None, did: str = "",
     :param overrides: 覆盖若干键（换机器时把重抓到的指纹整体传进来）。
     :param did: 设备标识；给了就替换 ``key1``，保证与 cookie 里的 did 一致。
     :param now_ms: 毫秒时间戳，默认取当前时间（对应 ``key2``）。
-    :param fresh_session: 是否重算会话相关字段（key18~key26 事件耗时与鼠标轨迹、
-        key35/key36 会话哈希）。**默认开**——原样重放同一串轨迹会被判成回放，
+    :param fresh_session: 是否重算会话相关字段（key18~key26 事件耗时与鼠标轨迹）。
+        **默认开**——原样重放同一串轨迹会被判成回放，
         实测服务端直接回 ``350014 anti check err``。只做对拍复现时才关掉。
     """
+    profile = get_profile()
+    ua = profile.get("ua", _UA)
+    geo = profile.get("geo") or ()
+    screen_width = int(profile.get("screen_width") or (geo[6] if len(geo) > 6 else 2560))
+    screen_height = int(profile.get("screen_height") or (geo[7] if len(geo) > 7 else 1440))
+    avail_width = int(profile.get("avail_width") or (geo[4] if len(geo) > 4 else screen_width))
+    avail_height = int(profile.get("avail_height") or (geo[5] if len(geo) > 5 else 1392))
+    inner_height = int(profile.get("inner_height") or
+                       (geo[1] if len(geo) > 1 else max(1, avail_height - 177)))
+    outer_width = int(profile.get("outer_width") or screen_width)
+    outer_height = int(profile.get("outer_height") or avail_height)
+    cpu = str(profile.get("cpu_core_num") or "20")
+    language = profile.get("language", "zh-CN")
+    dpr = profile.get("device_pixel_ratio", 1)
+    try:
+        dpr = float(dpr)
+        dpr = int(dpr) if dpr.is_integer() else dpr
+    except (TypeError, ValueError):
+        dpr = 1
+    # Keep the captured opaque hashes as a conservative fallback, but derive
+    # all low-entropy/browser-visible fields from the same profile used by
+    # headers and gdfp.  This prevents a stale captcha-only UA/geometry from
+    # contradicting the rest of the session and triggering anti-check 350014.
     data = dict(CAPTCHA_EXTRA_PARAM)
+    data.update({
+        "ua": ua,
+        "userAgent": ua,
+        "timeZone": profile.get("time_zone", data["timeZone"]),
+        "language": language,
+        "cpuCoreCnt": cpu,
+        "platform": profile.get("platform", data["platform"]),
+        "resolution": f"{screen_width}x{screen_height}",
+        "key3": ua,
+        "key4": profile.get("product_sub", data["key4"]),
+        "key5": language,
+        "key6": profile.get("product", data["key6"]),
+        "key7": screen_width,
+        "key8": screen_height,
+        "key9": avail_width,
+        "key10": avail_height,
+        "key11": inner_height,
+        "key12": screen_width,
+        "key13": outer_height,
+        "key14": outer_width,
+        "key37": dpr,
+        "key39": int(cpu),
+    })
+    # Merge captured browser-level values first. Session fields must be
+    # refreshed afterwards: a CDP snapshot's key2/key18..key26 belong to the
+    # old iframe instance and replaying them is precisely what triggers
+    # anti-check 350014.
+    data.update(overrides or {})
     stamp = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if did:
         data["key1"] = did
     data["key2"] = stamp
     if fresh_session:
         data.update(_session_fields(stamp))
-    data.update(overrides or {})
     return json.dumps(data, separators=(",", ":"), ensure_ascii=False)
 
 

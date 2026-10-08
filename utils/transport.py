@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import numbers
 import os
 
 # curl_cffi 当前支持列表中与真实 Chrome 151 最接近的最新目标。
@@ -181,13 +182,20 @@ def _curl_http_version_value(version):
 
     ``curl_cffi.Response.http_version`` is a ``CurlHttpVersion``/integer, where
     2 means HTTP/1.1 and 3 means HTTP/2.  Treating ``str(version) == "2"`` as
-    HTTP/2 silently inverts the contract.  Explicit textual values are kept
-    separate so fixture fakes may still say ``"h2"`` or ``"HTTP/1.1"``.
+    HTTP/2 silently inverts the contract. Named textual values (``"h2"`` /
+    ``"HTTP/1.1"``) remain supported for fixtures.
     """
     if isinstance(version, bool):
         return None
-    if isinstance(version, int):
+    if isinstance(version, numbers.Integral):
         return int(version)
+    # curl_cffi exposes an int, but small test/fallback adapters often
+    # serialize it before handing the response to us.  Only accept the
+    # protocol enum values here; textual protocol names are handled below.
+    if isinstance(version, str):
+        value = version.strip()
+        if value in {"0", "1", "2", "3", "4", "5", "30", "31"}:
+            return int(value)
     return None
 
 
